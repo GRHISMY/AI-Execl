@@ -1,402 +1,364 @@
 Attribute VB_Name = "JsonConverter"
-' =========================================
-' 模块名称: JsonConverter
-' 描述: 简化的JSON解析器（针对理想财经API）
-' 作者: Aone Copilot
-' 创建日期: 2025-12-05
-' =========================================
-
 Option Explicit
 
-' ========== 公共函数 ==========
+' ========== JSON解析模块 ==========
+' 专门用于解析理想财经API返回的JSON数据
 
-' 解析JSON字符串为字典对象
-Public Function ParseJson(jsonString As String) As Object
-    Dim json As Object
-    Set json = CreateObject("Scripting.Dictionary")
+' ========== 主要解析函数 ==========
+Public Function ParseApiResponse(jsonString As String) As Dictionary
+    ' 解析API响应，返回包含code和data的字典
+    Set ParseApiResponse = New Dictionary
     
-    ' 移除首尾空白
-    jsonString = Trim(jsonString)
-    
-    ' 检查是否为JSON对象
-    If Left(jsonString, 1) = "{" And Right(jsonString, 1) = "}" Then
-        Set ParseJson = ParseObject(jsonString)
-    ElseIf Left(jsonString, 1) = "[" And Right(jsonString, 1) = "]" Then
-        Set ParseJson = ParseArray(jsonString)
-    Else
-        Set ParseJson = Nothing
-    End If
-End Function
-
-' 从JSON对象中获取值
-Public Function GetJsonValue(jsonObj As Object, key As String) As Variant
-    On Error Resume Next
-    
-    If jsonObj Is Nothing Then
-        GetJsonValue = Null
-        Exit Function
-    End If
-    
-    If jsonObj.Exists(key) Then
-        If IsObject(jsonObj(key)) Then
-            Set GetJsonValue = jsonObj(key)
-        Else
-            GetJsonValue = jsonObj(key)
-        End If
-    Else
-        GetJsonValue = Null
-    End If
-End Function
-
-' 从JSON数组中获取元素
-Public Function GetJsonArrayItem(jsonArray As Object, index As Long) As Variant
-    On Error Resume Next
-    
-    If jsonArray Is Nothing Then
-        GetJsonArrayItem = Null
-        Exit Function
-    End If
-    
-    If index >= 0 And index < jsonArray.Count Then
-        If IsObject(jsonArray(index)) Then
-            Set GetJsonArrayItem = jsonArray(index)
-        Else
-            GetJsonArrayItem = jsonArray(index)
-        End If
-    Else
-        GetJsonArrayItem = Null
-    End If
-End Function
-
-' 获取JSON数组长度
-Public Function GetJsonArrayLength(jsonArray As Object) As Long
-    If jsonArray Is Nothing Then
-        GetJsonArrayLength = 0
-    Else
-        GetJsonArrayLength = jsonArray.Count
-    End If
-End Function
-
-' ========== 内部函数 ==========
-
-' 解析JSON对象
-Private Function ParseObject(jsonString As String) As Object
-    Dim dict As Object
-    Set dict = CreateObject("Scripting.Dictionary")
-    
-    ' 移除首尾的大括号
-    jsonString = Mid(jsonString, 2, Len(jsonString) - 2)
-    jsonString = Trim(jsonString)
-    
-    If Len(jsonString) = 0 Then
-        Set ParseObject = dict
-        Exit Function
-    End If
-    
-    ' 解析键值对
-    Dim pairs() As String
-    pairs = SplitJsonPairs(jsonString)
-    
-    Dim i As Long
-    Dim pair As String
-    Dim colonPos As Long
-    Dim key As String
-    Dim value As String
-    
-    For i = LBound(pairs) To UBound(pairs)
-        pair = Trim(pairs(i))
-        If Len(pair) > 0 Then
-            colonPos = InStr(pair, ":")
-            If colonPos > 0 Then
-                key = Trim(Mid(pair, 1, colonPos - 1))
-                value = Trim(Mid(pair, colonPos + 1))
-                
-                ' 移除键的引号
-                key = RemoveQuotes(key)
-                
-                ' 解析值
-                dict(key) = ParseValue(value)
-            End If
-        End If
-    Next i
-    
-    Set ParseObject = dict
-End Function
-
-' 解析JSON数组
-Private Function ParseArray(jsonString As String) As Object
-    Dim arr As Object
-    Set arr = CreateObject("Scripting.Dictionary")
-    
-    ' 移除首尾的方括号
-    jsonString = Mid(jsonString, 2, Len(jsonString) - 2)
-    jsonString = Trim(jsonString)
-    
-    If Len(jsonString) = 0 Then
-        Set ParseArray = arr
-        Exit Function
-    End If
-    
-    ' 分割数组元素
-    Dim elements() As String
-    elements = SplitJsonArray(jsonString)
-    
-    Dim i As Long
-    For i = LBound(elements) To UBound(elements)
-        arr(i) = ParseValue(Trim(elements(i)))
-    Next i
-    
-    Set ParseArray = arr
-End Function
-
-' 解析JSON值
-Private Function ParseValue(value As String) As Variant
-    value = Trim(value)
-    
-    ' 检查是否为对象
-    If Left(value, 1) = "{" And Right(value, 1) = "}" Then
-        Set ParseValue = ParseObject(value)
-        Exit Function
-    End If
-    
-    ' 检查是否为数组
-    If Left(value, 1) = "[" And Right(value, 1) = "]" Then
-        Set ParseValue = ParseArray(value)
-        Exit Function
-    End If
-    
-    ' 检查是否为字符串
-    If Left(value, 1) = """" And Right(value, 1) = """" Then
-        ParseValue = RemoveQuotes(value)
-        Exit Function
-    End If
-    
-    ' 检查是否为null
-    If LCase(value) = "null" Then
-        ParseValue = Null
-        Exit Function
-    End If
-    
-    ' 检查是否为布尔值
-    If LCase(value) = "true" Then
-        ParseValue = True
-        Exit Function
-    ElseIf LCase(value) = "false" Then
-        ParseValue = False
-        Exit Function
-    End If
-    
-    ' 尝试转换为数字
-    If IsNumeric(value) Then
-        If InStr(value, ".") > 0 Then
-            ParseValue = CDbl(value)
-        Else
-            ParseValue = CLng(value)
-        End If
-    Else
-        ParseValue = value
-    End If
-End Function
-
-' 分割JSON键值对
-Private Function SplitJsonPairs(jsonString As String) As String()
-    Dim pairs() As String
-    Dim pairCount As Long
-    Dim i As Long
-    Dim char As String
-    Dim inString As Boolean
-    Dim braceLevel As Long
-    Dim bracketLevel As Long
-    Dim currentPair As String
-    
-    pairCount = 0
-    inString = False
-    braceLevel = 0
-    bracketLevel = 0
-    currentPair = ""
-    
-    ReDim pairs(0 To 100)
-    
-    For i = 1 To Len(jsonString)
-        char = Mid(jsonString, i, 1)
-        
-        ' 处理字符串
-        If char = """" And (i = 1 Or Mid(jsonString, i - 1, 1) <> "\") Then
-            inString = Not inString
-        End If
-        
-        If Not inString Then
-            ' 处理嵌套结构
-            If char = "{" Then
-                braceLevel = braceLevel + 1
-            ElseIf char = "}" Then
-                braceLevel = braceLevel - 1
-            ElseIf char = "[" Then
-                bracketLevel = bracketLevel + 1
-            ElseIf char = "]" Then
-                bracketLevel = bracketLevel - 1
-            ElseIf char = "," And braceLevel = 0 And bracketLevel = 0 Then
-                ' 分隔符
-                If Len(currentPair) > 0 Then
-                    pairs(pairCount) = currentPair
-                    pairCount = pairCount + 1
-                    currentPair = ""
-                End If
-                GoTo NextChar
-            End If
-        End If
-        
-        currentPair = currentPair & char
-        
-NextChar:
-    Next i
-    
-    ' 添加最后一个键值对
-    If Len(currentPair) > 0 Then
-        pairs(pairCount) = currentPair
-        pairCount = pairCount + 1
-    End If
-    
-    ' 调整数组大小
-    If pairCount > 0 Then
-        ReDim Preserve pairs(0 To pairCount - 1)
-    Else
-        ReDim pairs(0 To 0)
-        pairs(0) = ""
-    End If
-    
-    SplitJsonPairs = pairs
-End Function
-
-' 分割JSON数组元素
-Private Function SplitJsonArray(jsonString As String) As String()
-    Dim elements() As String
-    Dim elemCount As Long
-    Dim i As Long
-    Dim char As String
-    Dim inString As Boolean
-    Dim braceLevel As Long
-    Dim bracketLevel As Long
-    Dim currentElem As String
-    
-    elemCount = 0
-    inString = False
-    braceLevel = 0
-    bracketLevel = 0
-    currentElem = ""
-    
-    ReDim elements(0 To 100)
-    
-    For i = 1 To Len(jsonString)
-        char = Mid(jsonString, i, 1)
-        
-        ' 处理字符串
-        If char = """" And (i = 1 Or Mid(jsonString, i - 1, 1) <> "\") Then
-            inString = Not inString
-        End If
-        
-        If Not inString Then
-            ' 处理嵌套结构
-            If char = "{" Then
-                braceLevel = braceLevel + 1
-            ElseIf char = "}" Then
-                braceLevel = braceLevel - 1
-            ElseIf char = "[" Then
-                bracketLevel = bracketLevel + 1
-            ElseIf char = "]" Then
-                bracketLevel = bracketLevel - 1
-            ElseIf char = "," And braceLevel = 0 And bracketLevel = 0 Then
-                ' 分隔符
-                If Len(currentElem) > 0 Then
-                    elements(elemCount) = currentElem
-                    elemCount = elemCount + 1
-                    currentElem = ""
-                End If
-                GoTo NextChar
-            End If
-        End If
-        
-        currentElem = currentElem & char
-        
-NextChar:
-    Next i
-    
-    ' 添加最后一个元素
-    If Len(currentElem) > 0 Then
-        elements(elemCount) = currentElem
-        elemCount = elemCount + 1
-    End If
-    
-    ' 调整数组大小
-    If elemCount > 0 Then
-        ReDim Preserve elements(0 To elemCount - 1)
-    Else
-        ReDim elements(0 To 0)
-        elements(0) = ""
-    End If
-    
-    SplitJsonArray = elements
-End Function
-
-' 移除字符串首尾的引号
-Private Function RemoveQuotes(str As String) As String
-    str = Trim(str)
-    If Left(str, 1) = """" Then str = Mid(str, 2)
-    If Right(str, 1) = """" Then str = Left(str, Len(str) - 1)
-    RemoveQuotes = str
-End Function
-
-' ========== 便捷函数 ==========
-
-' 从JSON响应中提取最新收盘价和日期
-Public Function ExtractLatestClosePrice(jsonResponse As String, ByRef outDate As String) As Variant
     On Error GoTo ErrorHandler
     
-    Dim jsonObj As Object
-    Dim dataArray As Object
-    Dim lastItem As Object
-    Dim arrayLength As Long
-    Dim closePrice As Variant
+    ' 清理JSON字符串
+    jsonString = Trim(jsonString)
+    If Left(jsonString, 1) <> "{" Or Right(jsonString, 1) <> "}" Then
+        ParseApiResponse("error") = "Invalid JSON format"
+        Exit Function
+    End If
     
-    ' 解析JSON
-    Set jsonObj = ParseJson(jsonResponse)
-    If jsonObj Is Nothing Then GoTo ErrorHandler
+    ' 提取code值
+    Dim code As Integer
+    code = ExtractJsonInteger(jsonString, "code")
+    ParseApiResponse("code") = code
     
-    ' 检查code字段
-    Dim code As Variant
-    code = GetJsonValue(jsonObj, "code")
+    ' 如果code不等于1，表示API返回错误
     If code <> 1 Then
-        ExtractLatestClosePrice = "API返回错误"
+        ParseApiResponse("error") = "API returned error code: " & code
         Exit Function
     End If
     
-    ' 获取data数组
-    Set dataArray = GetJsonValue(jsonObj, "data")
-    If dataArray Is Nothing Then GoTo ErrorHandler
+    ' 提取data数组
+    Dim dataArray As Collection
+    Set dataArray = ExtractDataArray(jsonString)
+    Set ParseApiResponse("data") = dataArray
     
-    arrayLength = GetJsonArrayLength(dataArray)
-    If arrayLength = 0 Then
-        ExtractLatestClosePrice = "无数据"
+    Exit Function
+    
+ErrorHandler:
+    ParseApiResponse("error") = "JSON parsing error: " & Err.Description
+End Function
+
+' ========== 提取最新收盘价 ==========
+Public Function GetLatestClosePriceFromJson(jsonString As String) As Variant
+    ' 从API响应中提取最新收盘价
+    On Error GoTo ErrorHandler
+    
+    Dim response As Dictionary
+    Set response = ParseApiResponse(jsonString)
+    
+    ' 检查是否有错误
+    If response.Exists("error") Then
+        GetLatestClosePriceFromJson = response("error")
         Exit Function
     End If
     
-    ' 获取最后一条记录（最新数据）
-    Set lastItem = GetJsonArrayItem(dataArray, arrayLength - 1)
-    If lastItem Is Nothing Then GoTo ErrorHandler
+    ' 获取数据数组
+    Dim dataArray As Collection
+    Set dataArray = response("data")
     
-    ' 提取收盘价和日期
-    closePrice = GetJsonValue(lastItem, "close")
-    outDate = GetJsonValue(lastItem, "date")
+    If dataArray.Count = 0 Then
+        GetLatestClosePriceFromJson = "无数据"
+        Exit Function
+    End If
     
-    If IsNull(closePrice) Or closePrice = "" Then
-        ExtractLatestClosePrice = "无收盘价数据"
+    ' 获取最新数据（第一条记录通常是最新的）
+    Dim latestRecord As Dictionary
+    Set latestRecord = dataArray(1)
+    
+    ' 提取收盘价
+    If latestRecord.Exists("close") Then
+        GetLatestClosePriceFromJson = latestRecord("close")
     Else
-        ExtractLatestClosePrice = closePrice
+        GetLatestClosePriceFromJson = "无收盘价数据"
     End If
     
     Exit Function
     
 ErrorHandler:
-    ExtractLatestClosePrice = "解析错误"
-    outDate = ""
+    GetLatestClosePriceFromJson = "解析错误: " & Err.Description
+End Function
+
+' ========== 提取最新数据日期 ==========
+Public Function GetLatestDateFromJson(jsonString As String) As Variant
+    ' 从API响应中提取最新数据日期
+    On Error GoTo ErrorHandler
+    
+    Dim response As Dictionary
+    Set response = ParseApiResponse(jsonString)
+    
+    ' 检查是否有错误
+    If response.Exists("error") Then
+        GetLatestDateFromJson = response("error")
+        Exit Function
+    End If
+    
+    ' 获取数据数组
+    Dim dataArray As Collection
+    Set dataArray = response("data")
+    
+    If dataArray.Count = 0 Then
+        GetLatestDateFromJson = "无数据"
+        Exit Function
+    End If
+    
+    ' 获取最新数据
+    Dim latestRecord As Dictionary
+    Set latestRecord = dataArray(1)
+    
+    ' 提取日期
+    If latestRecord.Exists("date") Then
+        GetLatestDateFromJson = latestRecord("date")
+    Else
+        GetLatestDateFromJson = Format(Date, "yyyy-mm-dd")
+    End If
+    
+    Exit Function
+    
+ErrorHandler:
+    GetLatestDateFromJson = "解析错误: " & Err.Description
+End Function
+
+' ========== 辅助函数：提取JSON整数值 ==========
+Private Function ExtractJsonInteger(jsonString As String, key As String) As Integer
+    Dim keyPattern As String
+    Dim startPos As Integer
+    Dim endPos As Integer
+    Dim valueString As String
+    
+    keyPattern = """" & key & """"
+    startPos = InStr(jsonString, keyPattern)
+    
+    If startPos = 0 Then
+        ExtractJsonInteger = 0
+        Exit Function
+    End If
+    
+    ' 找到冒号后的值
+    startPos = InStr(startPos, jsonString, ":") + 1
+    
+    ' 跳过空格
+    Do While Mid(jsonString, startPos, 1) = " "
+        startPos = startPos + 1
+    Loop
+    
+    ' 找到值的结束位置
+    endPos = startPos
+    Do While endPos <= Len(jsonString) And IsNumeric(Mid(jsonString, endPos, 1))
+        endPos = endPos + 1
+    Loop
+    endPos = endPos - 1
+    
+    valueString = Mid(jsonString, startPos, endPos - startPos + 1)
+    ExtractJsonInteger = Val(valueString)
+End Function
+
+' ========== 辅助函数：提取数据数组 ==========
+Private Function ExtractDataArray(jsonString As String) As Collection
+    Set ExtractDataArray = New Collection
+    
+    On Error GoTo ErrorHandler
+    
+    ' 找到data数组的开始位置
+    Dim dataStart As Integer
+    Dim dataEnd As Integer
+    Dim arrayString As String
+    
+    dataStart = InStr(jsonString, """data"":")
+    If dataStart = 0 Then Exit Function
+    
+    ' 找到数组开始的[
+    dataStart = InStr(dataStart, jsonString, "[")
+    If dataStart = 0 Then Exit Function
+    
+    ' 找到对应的]
+    dataEnd = FindMatchingBracket(jsonString, dataStart)
+    If dataEnd = 0 Then Exit Function
+    
+    arrayString = Mid(jsonString, dataStart + 1, dataEnd - dataStart - 1)
+    
+    ' 解析数组中的每个对象
+    ParseArrayObjects arrayString, ExtractDataArray
+    
+    Exit Function
+    
+ErrorHandler:
+    ' 返回空集合
+End Function
+
+' ========== 辅助函数：解析数组中的对象 ==========
+Private Sub ParseArrayObjects(arrayString As String, resultCollection As Collection)
+    On Error GoTo ErrorHandler
+    
+    Dim objectStart As Integer
+    Dim objectEnd As Integer
+    Dim currentPos As Integer
+    Dim objectString As String
+    Dim recordDict As Dictionary
+    
+    currentPos = 1
+    
+    Do While currentPos <= Len(arrayString)
+        ' 找到下一个对象的开始
+        objectStart = InStr(currentPos, arrayString, "{")
+        If objectStart = 0 Then Exit Do
+        
+        ' 找到对象的结束
+        objectEnd = FindMatchingBrace(arrayString, objectStart)
+        If objectEnd = 0 Then Exit Do
+        
+        ' 提取对象字符串
+        objectString = Mid(arrayString, objectStart + 1, objectEnd - objectStart - 1)
+        
+        ' 解析对象
+        Set recordDict = ParseJsonObject(objectString)
+        resultCollection.Add recordDict
+        
+        currentPos = objectEnd + 1
+    Loop
+    
+    Exit Sub
+    
+ErrorHandler:
+    ' 静默处理错误
+End Sub
+
+' ========== 辅助函数：解析JSON对象 ==========
+Private Function ParseJsonObject(objectString As String) As Dictionary
+    Set ParseJsonObject = New Dictionary
+    
+    On Error GoTo ErrorHandler
+    
+    ' 解析常见字段
+    ParseJsonObject("date") = ExtractJsonStringValue(objectString, "date")
+    ParseJsonObject("open") = ExtractJsonNumberValue(objectString, "open")
+    ParseJsonObject("high") = ExtractJsonNumberValue(objectString, "high")
+    ParseJsonObject("low") = ExtractJsonNumberValue(objectString, "low")
+    ParseJsonObject("close") = ExtractJsonNumberValue(objectString, "close")
+    ParseJsonObject("volume") = ExtractJsonNumberValue(objectString, "volume")
+    ParseJsonObject("amount") = ExtractJsonNumberValue(objectString, "amount")
+    ParseJsonObject("change") = ExtractJsonNumberValue(objectString, "change")
+    
+    Exit Function
+    
+ErrorHandler:
+    ' 返回空字典
+End Function
+
+' ========== 辅助函数：提取JSON字符串值 ==========
+Private Function ExtractJsonStringValue(objectString As String, key As String) As String
+    Dim keyPattern As String
+    Dim startPos As Integer
+    Dim endPos As Integer
+    
+    keyPattern = """" & key & """"
+    startPos = InStr(objectString, keyPattern)
+    
+    If startPos = 0 Then
+        ExtractJsonStringValue = ""
+        Exit Function
+    End If
+    
+    ' 找到冒号后的引号
+    startPos = InStr(startPos, objectString, ":") + 1
+    startPos = InStr(startPos, objectString, """") + 1
+    
+    ' 找到结束引号
+    endPos = InStr(startPos, objectString, """")
+    If endPos = 0 Then
+        ExtractJsonStringValue = ""
+        Exit Function
+    End If
+    
+    ExtractJsonStringValue = Mid(objectString, startPos, endPos - startPos)
+End Function
+
+' ========== 辅助函数：提取JSON数值 ==========
+Private Function ExtractJsonNumberValue(objectString As String, key As String) As Double
+    Dim keyPattern As String
+    Dim startPos As Integer
+    Dim endPos As Integer
+    Dim valueString As String
+    Dim char As String
+    
+    keyPattern = """" & key & """"
+    startPos = InStr(objectString, keyPattern)
+    
+    If startPos = 0 Then
+        ExtractJsonNumberValue = 0
+        Exit Function
+    End If
+    
+    ' 找到冒号后的值
+    startPos = InStr(startPos, objectString, ":") + 1
+    
+    ' 跳过空格
+    Do While startPos <= Len(objectString) And Mid(objectString, startPos, 1) = " "
+        startPos = startPos + 1
+    Loop
+    
+    ' 找到数值的结束位置
+    endPos = startPos
+    Do While endPos <= Len(objectString)
+        char = Mid(objectString, endPos, 1)
+        If Not (IsNumeric(char) Or char = "." Or char = "-" Or char = "e" Or char = "E" Or char = "+") Then
+            Exit Do
+        End If
+        endPos = endPos + 1
+    Loop
+    endPos = endPos - 1
+    
+    If endPos >= startPos Then
+        valueString = Mid(objectString, startPos, endPos - startPos + 1)
+        ExtractJsonNumberValue = Val(valueString)
+    Else
+        ExtractJsonNumberValue = 0
+    End If
+End Function
+
+' ========== 辅助函数：找到匹配的方括号 ==========
+Private Function FindMatchingBracket(text As String, startPos As Integer) As Integer
+    Dim count As Integer
+    Dim i As Integer
+    Dim char As String
+    
+    count = 1
+    For i = startPos + 1 To Len(text)
+        char = Mid(text, i, 1)
+        If char = "[" Then
+            count = count + 1
+        ElseIf char = "]" Then
+            count = count - 1
+            If count = 0 Then
+                FindMatchingBracket = i
+                Exit Function
+            End If
+        End If
+    Next i
+    
+    FindMatchingBracket = 0
+End Function
+
+' ========== 辅助函数：找到匹配的花括号 ==========
+Private Function FindMatchingBrace(text As String, startPos As Integer) As Integer
+    Dim count As Integer
+    Dim i As Integer
+    Dim char As String
+    
+    count = 1
+    For i = startPos + 1 To Len(text)
+        char = Mid(text, i, 1)
+        If char = "{" Then
+            count = count + 1
+        ElseIf char = "}" Then
+            count = count - 1
+            If count = 0 Then
+                FindMatchingBrace = i
+                Exit Function
+            End If
+        End If
+    Next i
+    
+    FindMatchingBrace = 0
 End Function
