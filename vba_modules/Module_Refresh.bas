@@ -99,7 +99,8 @@ Public Sub RefreshAllPrices()
         If IsDate(dataDate) Or Len(CStr(dataDate)) > 0 Then
             ws.Cells(currentRow, DATE_COLUMN).Value = dataDate
         Else
-            ws.Cells(currentRow, DATE_COLUMN).Value = Format(Date, "yyyy-mm-dd")
+            ' Mac兼容的日期格式化方法
+            ws.Cells(currentRow, DATE_COLUMN).Value = Year(Date) & "-" & Right("0" & Month(Date), 2) & "-" & Right("0" & Day(Date), 2)
         End If
         
         ' 刷新屏幕显示
@@ -390,7 +391,7 @@ Public Sub ExportDataToCSV()
     ' 选择保存位置
     Dim fileName As String
     fileName = Application.GetSaveAsFilename( _
-        InitialFileName:="ETF_Price_Data_" & Format(Date, "yyyymmdd") & ".csv", _
+        InitialFileName:="ETF_Price_Data_" & Year(Date) & Right("0" & Month(Date), 2) & Right("0" & Day(Date), 2) & ".csv", _
         FileFilter:="CSV文件 (*.csv), *.csv", _
         Title:="导出ETF数据")
     

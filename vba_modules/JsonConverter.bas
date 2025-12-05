@@ -5,9 +5,9 @@ Option Explicit
 ' 专门用于解析理想财经API返回的JSON数据
 
 ' ========== 主要解析函数 ==========
-Public Function ParseApiResponse(jsonString As String) As Dictionary
+Public Function ParseApiResponse(jsonString As String) As Object
     ' 解析API响应，返回包含code和data的字典
-    Set ParseApiResponse = New Dictionary
+    Set ParseApiResponse = CreateObject("Scripting.Dictionary")
     
     On Error GoTo ErrorHandler
     
@@ -45,37 +45,37 @@ Public Function GetLatestClosePriceFromJson(jsonString As String) As Variant
     ' 从API响应中提取最新收盘价
     On Error GoTo ErrorHandler
     
-    Dim response As Dictionary
+    Dim response As Object
     Set response = ParseApiResponse(jsonString)
-    
+
     ' 检查是否有错误
     If response.Exists("error") Then
         GetLatestClosePriceFromJson = response("error")
         Exit Function
     End If
-    
+
     ' 获取数据数组
     Dim dataArray As Collection
     Set dataArray = response("data")
-    
+
     If dataArray.Count = 0 Then
         GetLatestClosePriceFromJson = "无数据"
         Exit Function
     End If
-    
+
     ' 获取最新数据（第一条记录通常是最新的）
-    Dim latestRecord As Dictionary
+    Dim latestRecord As Object
     Set latestRecord = dataArray(1)
-    
+
     ' 提取收盘价
     If latestRecord.Exists("close") Then
         GetLatestClosePriceFromJson = latestRecord("close")
     Else
         GetLatestClosePriceFromJson = "无收盘价数据"
     End If
-    
+
     Exit Function
-    
+
 ErrorHandler:
     GetLatestClosePriceFromJson = "解析错误: " & Err.Description
 End Function
@@ -84,34 +84,35 @@ End Function
 Public Function GetLatestDateFromJson(jsonString As String) As Variant
     ' 从API响应中提取最新数据日期
     On Error GoTo ErrorHandler
-    
-    Dim response As Dictionary
+
+    Dim response As Object
     Set response = ParseApiResponse(jsonString)
-    
+
     ' 检查是否有错误
     If response.Exists("error") Then
         GetLatestDateFromJson = response("error")
         Exit Function
     End If
-    
+
     ' 获取数据数组
     Dim dataArray As Collection
     Set dataArray = response("data")
-    
+
     If dataArray.Count = 0 Then
         GetLatestDateFromJson = "无数据"
         Exit Function
     End If
-    
+
     ' 获取最新数据
-    Dim latestRecord As Dictionary
+    Dim latestRecord As Object
     Set latestRecord = dataArray(1)
     
     ' 提取日期
     If latestRecord.Exists("date") Then
         GetLatestDateFromJson = latestRecord("date")
     Else
-        GetLatestDateFromJson = Format(Date, "yyyy-mm-dd")
+        ' Mac兼容的日期格式化方法
+        GetLatestDateFromJson = Year(Date) & "-" & Right("0" & Month(Date), 2) & "-" & Right("0" & Day(Date), 2)
     End If
     
     Exit Function
@@ -195,7 +196,7 @@ Private Sub ParseArrayObjects(arrayString As String, resultCollection As Collect
     Dim objectEnd As Integer
     Dim currentPos As Integer
     Dim objectString As String
-    Dim recordDict As Dictionary
+    Dim recordDict As Object
     
     currentPos = 1
     
@@ -225,8 +226,8 @@ ErrorHandler:
 End Sub
 
 ' ========== 辅助函数：解析JSON对象 ==========
-Private Function ParseJsonObject(objectString As String) As Dictionary
-    Set ParseJsonObject = New Dictionary
+Private Function ParseJsonObject(objectString As String) As Object
+    Set ParseJsonObject = CreateObject("Scripting.Dictionary")
     
     On Error GoTo ErrorHandler
     

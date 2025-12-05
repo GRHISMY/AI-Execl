@@ -51,19 +51,61 @@ End Function
 Public Function CheckInternetConnection() As Boolean
     On Error GoTo ErrorHandler
     
-    ' 使用简单的HTTP请求测试网络连接
+    ' 多层次网络检查，Mac系统兼容
     Dim httpRequest As Object
+
+    ' 方法1: 尝试使用MSXML2.XMLHTTP
     Set httpRequest = CreateObject("MSXML2.XMLHTTP")
-    
-    httpRequest.Open "GET", "https://www.baidu.com", False
-    httpRequest.setRequestHeader "User-Agent", "Excel VBA ETF Tracker"
-    httpRequest.send
-    
-    CheckInternetConnection = (httpRequest.Status = 200)
-    Exit Function
-    
-ErrorHandler:
+
+    With httpRequest
+        ' 使用HTTP而不是HTTPS，提高Mac兼容性
+        .Open "GET", "http://www.apple.com", False
+        .setRequestHeader "User-Agent", "Excel VBA ETF Tracker"
+
+        ' 设置较短的超时时间
+        On Error Resume Next
+        .setTimeouts 5000, 5000, 10000, 10000
+        On Error GoTo ErrorHandler
+
+        .send
+
+        ' 检查响应状态
+        If .Status = 200 Or .Status = 301 Or .Status = 302 Then
+            CheckInternetConnection = True
+            Exit Function
+        End If
+    End With
+
+    ' 方法2: 如果第一种方法失败，尝试其他方法
+    Set httpRequest = Nothing
+    Set httpRequest = CreateObject("WinHttp.WinHttpRequest.5.1")
+
+    With httpRequest
+        .Open "GET", "http://www.apple.com", False
+        .setRequestHeader "User-Agent", "Excel VBA ETF Tracker"
+        .setTimeouts 5000, 5000, 10000, 10000
+        .send
+
+        If .Status = 200 Or .Status = 301 Or .Status = 302 Then
+            CheckInternetConnection = True
+            Exit Function
+        End If
+    End With
+
+    ' 如果都失败，返回False
     CheckInternetConnection = False
+    Exit Function
+
+ErrorHandler:
+    ' 如果创建对象或网络请求失败，尝试fallback方法
+    On Error Resume Next
+
+    ' 方法3: 简单的连接测试作为最后的fallback
+    ' 在某些Mac系统上，网络请求可能不可用，但实际网络是正常的
+    ' 这种情况下我们允许继续执行，让API调用自己处理网络错误
+    CheckInternetConnection = True
+
+    Debug.Print "网络检查遇到问题，将继续执行API调用 - " & Err.Description
 End Function
 
 ' ========== API频率限制控制 ==========
@@ -129,10 +171,14 @@ End Sub
 
 ' ========== 获取当前日期字符串 ==========
 Public Function GetCurrentDateString() As String
-    GetCurrentDateString = Format(Date, "yyyy-mm-dd")
+    ' Mac兼容的日期格式化方法
+    GetCurrentDateString = Year(Date) & "-" & Right("0" & Month(Date), 2) & "-" & Right("0" & Day(Date), 2)
 End Function
 
 ' ========== 获取5天前日期字符串（用于API默认查询范围）==========
 Public Function GetFiveDaysAgoString() As String
-    GetFiveDaysAgoString = Format(DateAdd("d", -5, Date), "yyyy-mm-dd")
+    ' Mac兼容的日期格式化方法
+    Dim fiveDaysAgo As Date
+    fiveDaysAgo = DateAdd("d", -5, Date)
+    GetFiveDaysAgoString = Year(fiveDaysAgo) & "-" & Right("0" & Month(fiveDaysAgo), 2) & "-" & Right("0" & Day(fiveDaysAgo), 2)
 End Function

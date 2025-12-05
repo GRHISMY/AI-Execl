@@ -223,13 +223,13 @@ Private Function IsMarketHours() As Boolean
     ' 简化版本：周一到周五，9:00-15:30
     
     Dim currentTime As Date
-    Dim weekday As Integer
-    
+    Dim dayOfWeek As Integer
+
     currentTime = Now()
-    weekday = Weekday(currentTime)
-    
+    dayOfWeek = Weekday(currentTime)
+
     ' 检查是否为工作日（周一到周五）
-    If weekday < 2 Or weekday > 6 Then
+    If dayOfWeek < 2 Or dayOfWeek > 6 Then
         IsMarketHours = False
         Exit Function
     End If
