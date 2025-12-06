@@ -1,4 +1,4 @@
-Attribute VB_Name = "Module_Config"
+' Attribute VB_Name = "Module_Config"
 '
 ' Module_Config - 配置管理模块
 ' 负责API token和应用配置的管理

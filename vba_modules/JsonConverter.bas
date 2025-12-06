@@ -1,4 +1,4 @@
-Attribute VB_Name = "JsonConverter"
+'Attribute VB_Name = "JsonConverter"
 '
 ' JsonConverter - 增强的JSON解析器模块
 ' 专为Mac Excel环境优化，支持复杂嵌套结构的JSON解析
@@ -7,14 +7,14 @@ Option Explicit
 
 ' 全局变量用于解析状态
 Private parseIndex As Long
-Private parseString As String
+Private jsonContent As String
 
 ' JSON解析主函数
 Public Function ParseJSON(jsonString As String) As Object
     On Error GoTo ErrorHandler
 
     ' 初始化解析状态
-    parseString = Trim(jsonString)
+    jsonContent = Trim(jsonString)
     parseIndex = 1
 
     ' 开始解析
@@ -33,13 +33,13 @@ Private Function ParseValue() As Variant
     ' 跳过空白字符
     SkipWhitespace
 
-    If parseIndex > Len(parseString) Then
+    If parseIndex > Len(jsonContent) Then
         ParseValue = Null
         Exit Function
     End If
 
     Dim char As String
-    char = Mid(parseString, parseIndex, 1)
+    char = Mid(jsonContent, parseIndex, 1)
 
     Select Case char
         Case "{"
@@ -79,7 +79,7 @@ Private Function ParseObject() As Object
     SkipWhitespace
 
     ' 检查空对象
-    If parseIndex <= Len(parseString) And Mid(parseString, parseIndex, 1) = "}" Then
+    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "}" Then
         parseIndex = parseIndex + 1
         Set ParseObject = obj
         Exit Function
@@ -90,7 +90,7 @@ Private Function ParseObject() As Object
         SkipWhitespace
 
         ' 解析键
-        If parseIndex > Len(parseString) Or Mid(parseString, parseIndex, 1) <> """" Then
+        If parseIndex > Len(jsonContent) Or Mid(jsonContent, parseIndex, 1) <> """" Then
             Err.Raise vbObjectError + 1002, "JsonConverter", "期望字符串键"
         End If
 
@@ -100,7 +100,7 @@ Private Function ParseObject() As Object
         SkipWhitespace
 
         ' 期望冒号
-        If parseIndex > Len(parseString) Or Mid(parseString, parseIndex, 1) <> ":" Then
+        If parseIndex > Len(jsonContent) Or Mid(jsonContent, parseIndex, 1) <> ":" Then
             Err.Raise vbObjectError + 1003, "JsonConverter", "期望冒号"
         End If
         parseIndex = parseIndex + 1
@@ -118,10 +118,10 @@ Private Function ParseObject() As Object
         SkipWhitespace
 
         ' 检查是否继续
-        If parseIndex > Len(parseString) Then Exit Do
+        If parseIndex > Len(jsonContent) Then Exit Do
 
         Dim nextChar As String
-        nextChar = Mid(parseString, parseIndex, 1)
+        nextChar = Mid(jsonContent, parseIndex, 1)
 
         If nextChar = "}" Then
             parseIndex = parseIndex + 1
@@ -153,7 +153,7 @@ Private Function ParseArray() As Object
     SkipWhitespace
 
     ' 检查空数组
-    If parseIndex <= Len(parseString) And Mid(parseString, parseIndex, 1) = "]" Then
+    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "]" Then
         parseIndex = parseIndex + 1
         Set ParseArray = arr
         Exit Function
@@ -179,10 +179,10 @@ Private Function ParseArray() As Object
         SkipWhitespace
 
         ' 检查是否继续
-        If parseIndex > Len(parseString) Then Exit Do
+        If parseIndex > Len(jsonContent) Then Exit Do
 
         Dim nextChar As String
-        nextChar = Mid(parseString, parseIndex, 1)
+        nextChar = Mid(jsonContent, parseIndex, 1)
 
         If nextChar = "]" Then
             parseIndex = parseIndex + 1
@@ -212,9 +212,9 @@ Private Function ParseString() As String
     Dim result As String
     result = ""
 
-    Do While parseIndex <= Len(parseString)
+    Do While parseIndex <= Len(jsonContent)
         Dim char As String
-        char = Mid(parseString, parseIndex, 1)
+        char = Mid(jsonContent, parseIndex, 1)
 
         If char = """" Then
             ' 结束引号
@@ -224,9 +224,9 @@ Private Function ParseString() As String
         ElseIf char = "\" Then
             ' 转义字符
             parseIndex = parseIndex + 1
-            If parseIndex <= Len(parseString) Then
+            If parseIndex <= Len(jsonContent) Then
                 Dim escapeChar As String
-                escapeChar = Mid(parseString, parseIndex, 1)
+                escapeChar = Mid(jsonContent, parseIndex, 1)
                 Select Case escapeChar
                     Case """"
                         result = result & """"
@@ -270,49 +270,49 @@ Private Function ParseNumber() As Variant
     startPos = parseIndex
 
     ' 处理负号
-    If Mid(parseString, parseIndex, 1) = "-" Then
+    If Mid(jsonContent, parseIndex, 1) = "-" Then
         parseIndex = parseIndex + 1
     End If
 
     ' 解析整数部分
-    If Not IsNumericChar(Mid(parseString, parseIndex, 1)) Then
+    If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
         Err.Raise vbObjectError + 1007, "JsonConverter", "无效的数字格式"
     End If
 
-    Do While parseIndex <= Len(parseString) And IsNumericChar(Mid(parseString, parseIndex, 1))
+    Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
         parseIndex = parseIndex + 1
     Loop
 
     ' 处理小数点
-    If parseIndex <= Len(parseString) And Mid(parseString, parseIndex, 1) = "." Then
+    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "." Then
         parseIndex = parseIndex + 1
-        If Not IsNumericChar(Mid(parseString, parseIndex, 1)) Then
+        If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
             Err.Raise vbObjectError + 1008, "JsonConverter", "小数点后需要数字"
         End If
 
-        Do While parseIndex <= Len(parseString) And IsNumericChar(Mid(parseString, parseIndex, 1))
+        Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
             parseIndex = parseIndex + 1
         Loop
     End If
 
     ' 处理科学计数法
-    If parseIndex <= Len(parseString) And (Mid(parseString, parseIndex, 1) = "e" Or Mid(parseString, parseIndex, 1) = "E") Then
+    If parseIndex <= Len(jsonContent) And (Mid(jsonContent, parseIndex, 1) = "e" Or Mid(jsonContent, parseIndex, 1) = "E") Then
         parseIndex = parseIndex + 1
-        If parseIndex <= Len(parseString) And (Mid(parseString, parseIndex, 1) = "+" Or Mid(parseString, parseIndex, 1) = "-") Then
+        If parseIndex <= Len(jsonContent) And (Mid(jsonContent, parseIndex, 1) = "+" Or Mid(jsonContent, parseIndex, 1) = "-") Then
             parseIndex = parseIndex + 1
         End If
 
-        If Not IsNumericChar(Mid(parseString, parseIndex, 1)) Then
+        If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
             Err.Raise vbObjectError + 1009, "JsonConverter", "指数需要数字"
         End If
 
-        Do While parseIndex <= Len(parseString) And IsNumericChar(Mid(parseString, parseIndex, 1))
+        Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
             parseIndex = parseIndex + 1
         Loop
     End If
 
     Dim numberStr As String
-    numberStr = Mid(parseString, startPos, parseIndex - startPos)
+    numberStr = Mid(jsonContent, startPos, parseIndex - startPos)
 
     If InStr(numberStr, ".") > 0 Or InStr(LCase(numberStr), "e") > 0 Then
         ParseNumber = CDbl(numberStr)
@@ -331,10 +331,10 @@ End Function
 Private Function ParseBoolean() As Boolean
     On Error GoTo ErrorHandler
 
-    If Mid(parseString, parseIndex, 4) = "true" Then
+    If Mid(jsonContent, parseIndex, 4) = "true" Then
         parseIndex = parseIndex + 4
         ParseBoolean = True
-    ElseIf Mid(parseString, parseIndex, 5) = "false" Then
+    ElseIf Mid(jsonContent, parseIndex, 5) = "false" Then
         parseIndex = parseIndex + 5
         ParseBoolean = False
     Else
@@ -352,7 +352,7 @@ End Function
 Private Function ParseNull() As Variant
     On Error GoTo ErrorHandler
 
-    If Mid(parseString, parseIndex, 4) = "null" Then
+    If Mid(jsonContent, parseIndex, 4) = "null" Then
         parseIndex = parseIndex + 4
         ParseNull = Null
     Else
@@ -368,9 +368,9 @@ End Function
 
 ' 跳过空白字符
 Private Sub SkipWhitespace()
-    Do While parseIndex <= Len(parseString)
+    Do While parseIndex <= Len(jsonContent)
         Dim char As String
-        char = Mid(parseString, parseIndex, 1)
+        char = Mid(jsonContent, parseIndex, 1)
         If char = " " Or char = vbTab Or char = vbCr Or char = vbLf Then
             parseIndex = parseIndex + 1
         Else
@@ -432,7 +432,7 @@ ErrorHandler:
 End Function
 
 ' 转换对象为JSON
-Private Function ConvertObjectToJSON(obj As Object) As String
+Private Function ConvertObjectToJSON(ByVal obj As Object) As String
     On Error GoTo ErrorHandler
 
     If obj Is Nothing Then

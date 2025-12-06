@@ -1,4 +1,4 @@
-Attribute VB_Name = "Module_Refresh"
+' Attribute VB_Name = "Module_Refresh"
 '
 ' Module_Refresh - 数据刷新模块
 ' 负责ETF价格数据的批量更新和界面交互
@@ -7,7 +7,7 @@ Option Explicit
 
 ' 全局变量
 Private isRefreshing As Boolean
-Private cancelRefresh As Boolean
+Private isCancelled As Boolean
 
 ' 主刷新函数
 Public Sub RefreshETFPrices()
@@ -19,7 +19,7 @@ Public Sub RefreshETFPrices()
     End If
     
     isRefreshing = True
-    cancelRefresh = False
+    isCancelled = False
     
     ' 设置状态栏
     Application.StatusBar = "正在刷新ETF价格数据..."
@@ -87,7 +87,7 @@ ErrorHandler:
 CleanUp:
     Application.ScreenUpdating = True
     isRefreshing = False
-    cancelRefresh = False
+    isCancelled = False
 End Sub
 
 ' 从工作表获取ETF代码
@@ -285,7 +285,7 @@ End Sub
 Public Sub CancelRefresh()
     On Error Resume Next
     
-    cancelRefresh = True
+    isCancelled = True
     Application.StatusBar = "正在取消刷新..."
 End Sub
 
