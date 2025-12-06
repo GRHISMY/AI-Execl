@@ -1,4 +1,4 @@
-Attribute VB_Name = "JsonConverter"
+' Attribute VB_Name = "JsonConverter"
 '
 ' JsonConverter_Mac - Mac兼容的JSON转换器
 ' 完全不依赖ActiveX组件，专为Mac Excel设计

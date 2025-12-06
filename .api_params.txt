@@ -1,4 +1,5 @@
-# API配置文件 - 2025-12-06 09:55:49
+# API配置文件 - 2025-12-06 10:11:25
 test.key="test_value_095549"
 force.test.key="force_test_095521"
+api.token="30cf80b9-ac68-4521-86c2-5847d7ce728e"
 

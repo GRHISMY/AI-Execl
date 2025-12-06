@@ -1,4 +1,4 @@
-Attribute VB_Name = "Module_Config"
+' Attribute VB_Name = "Module_Config"
 '
 ' Module_Config_Mac - Mac兼容的配置管理模块
 ' 完全不依赖ActiveX组件，专为Mac Excel设计
