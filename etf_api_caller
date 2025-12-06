@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+ETF API调用器 - 临时测试版本
+Mac兼容的ETF价格获取工具
+"""
+
+import json
+import sys
+import argparse
+from datetime import datetime
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(description='ETF价格获取工具')
+    parser.add_argument('--codes', required=True, help='ETF代码，逗号分隔')
+    parser.add_argument('--config', help='配置文件路径（可选）')
+    
+    args = parser.parse_args()
+    
+    # 解析ETF代码
+    etf_codes = [code.strip() for code in args.codes.split(',')]
+    
+    # 模拟API响应数据
+    response_data = {
+        "status": "success",
+        "data": {}
+    }
+    
+    # 为每个ETF代码生成模拟数据
+    for code in etf_codes:
+        if code:
+            # 模拟价格数据（实际项目中这里会调用真实的API）
+            price = round(1.0 + hash(code) % 100 / 100.0, 3)  # 生成1.0-2.0之间的价格
+            
+            response_data["data"][code] = {
+                "price": price,
+                "status": "success",
+                "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+    
+    # 输出JSON响应
+    print(json.dumps(response_data, ensure_ascii=False, indent=2))
+
+if __name__ == "__main__":
+    main()

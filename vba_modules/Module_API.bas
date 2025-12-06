@@ -245,16 +245,66 @@ ErrorHandler:
     Debug.Print "API响应解析错误: " & Err.Description
 End Function
 
+' 调试API响应解析
+Public Function DebugParseAPIResponse(response As String) As String
+    On Error GoTo ErrorHandler
+
+    Dim debugInfo As String
+    debugInfo = "=== API响应调试信息 ===" & vbCrLf
+    debugInfo = debugInfo & "响应长度: " & Len(response) & vbCrLf
+    debugInfo = debugInfo & "响应前100字符: " & Left(response, 100) & vbCrLf
+
+    ' 尝试解析
+    Dim parsedObj As Object
+    Set parsedObj = JsonConverter.ParseJSON(response)
+
+    If parsedObj Is Nothing Then
+        debugInfo = debugInfo & "解析结果: NULL对象" & vbCrLf
+    Else
+        debugInfo = debugInfo & "解析结果: 成功" & vbCrLf
+    End If
+
+    DebugParseAPIResponse = debugInfo
+    Exit Function
+
+ErrorHandler:
+    debugInfo = debugInfo & "解析错误: " & Err.Description & " (错误号: " & Err.Number & ")" & vbCrLf
+    DebugParseAPIResponse = debugInfo
+End Function
+
+' 测试JSON解析器
+Public Sub TestJSONParser()
+    On Error GoTo ErrorHandler
+
+    ' 测试简单的JSON
+    Dim testJSON As String
+    testJSON = "{""status"":""success"",""data"":{""159915"":{""price"":1.234,""status"":""ok""}}}"
+
+    Dim result As Object
+    Set result = JsonConverter.ParseJSON(testJSON)
+
+    If result Is Nothing Then
+        MsgBox "JSON解析器测试失败：返回Nothing", vbExclamation, "测试失败"
+    Else
+        MsgBox "JSON解析器测试成功！", vbInformation, "测试成功"
+    End If
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "JSON解析器测试出错: " & Err.Description, vbExclamation, "测试错误"
+End Sub
+
 ' 处理API错误
 Public Sub HandleAPIError(errorMsg As String)
     On Error Resume Next
-    
+
     ' 在状态栏显示错误
     Application.StatusBar = "ETF API错误: " & errorMsg
-    
+
     ' 记录到调试窗口
     Debug.Print "API错误: " & errorMsg & " - " & Now()
-    
+
     ' 可以添加用户提示
     MsgBox "ETF数据获取失败: " & errorMsg, vbExclamation, "API错误"
 End Sub
@@ -262,15 +312,15 @@ End Sub
 ' 测试API连接
 Public Function TestAPIConnection() As Boolean
     On Error GoTo ErrorHandler
-    
+
     ' 使用测试ETF代码
     Dim testResult As String
     testResult = CallETFAPI("159915")
-    
+
     ' 解析结果
     Dim jsonResult As Object
     Set jsonResult = ParseAPIResponse(testResult)
-    
+
     If Not jsonResult Is Nothing Then
         If jsonResult.Exists("status") Then
             TestAPIConnection = (jsonResult("status") = "success")
@@ -280,9 +330,9 @@ Public Function TestAPIConnection() As Boolean
     Else
         TestAPIConnection = False
     End If
-    
+
     Exit Function
-    
+
 ErrorHandler:
     TestAPIConnection = False
     Debug.Print "API连接测试错误: " & Err.Description
