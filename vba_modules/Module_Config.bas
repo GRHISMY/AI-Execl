@@ -1,184 +1,347 @@
 Attribute VB_Name = "Module_Config"
+'
+' Module_Config - 配置管理模块
+' 负责API token和应用配置的管理
+'
 Option Explicit
 
-' ========== API 配置常量 ==========
-Public Const API_BASE_URL As String = "https://open.lixinger.com/api/cn/fund/candlestick"
-Public Const API_TOKEN As String = "30cf80b9-ac68-4521-86c2-5847d7ce728e"
-Public Const API_TIMEOUT As Integer = 30
-Public Const API_RATE_LIMIT_DELAY As Single = 0.5 ' 每次请求间隔0.5秒
+' 配置文件路径
+Private Const CONFIG_FILE_NAME As String = "api_config.json"
+Private configData As Object
 
-' ========== 工作表配置 ==========
-Public Const WORKSHEET_NAME As String = "ETF价格"
-Public Const ETF_CODE_COLUMN As Integer = 1  ' A列：ETF代码
-Public Const PRICE_COLUMN As Integer = 2     ' B列：最新收盘价
-Public Const DATE_COLUMN As Integer = 3      ' C列：数据日期
-Public Const HEADER_ROW As Integer = 1       ' 第1行为表头
-
-' ========== 表头文本 ==========
-Public Const HEADER_ETF_CODE As String = "ETF代码"
-Public Const HEADER_PRICE As String = "最新收盘价"
-Public Const HEADER_DATE As String = "数据日期"
-
-' ========== 错误信息 ==========
-Public Const ERROR_NETWORK As String = "网络错误"
-Public Const ERROR_INVALID_CODE As String = "无效代码"
-Public Const ERROR_API As String = "API错误"
-Public Const ERROR_NO_DATA As String = "无数据"
-
-' ========== 全局变量 ==========
-Public LastRequestTime As Double ' 用于控制API调用频率
-
-' ========== 配置验证函数 ==========
-Public Function ValidateConfiguration() As Boolean
-    ' 验证Token是否配置
-    If Len(API_TOKEN) = 0 Then
-        MsgBox "错误：未配置API Token，请联系管理员", vbCritical, "配置错误"
-        ValidateConfiguration = False
-        Exit Function
-    End If
-    
-    ' 验证网络连接
-    If Not CheckInternetConnection() Then
-        MsgBox "错误：无法连接到互联网，请检查网络连接", vbCritical, "网络错误"
-        ValidateConfiguration = False
-        Exit Function
-    End If
-    
-    ValidateConfiguration = True
-End Function
-
-' ========== 网络连接检查 ==========
-Public Function CheckInternetConnection() As Boolean
+' 加载配置
+Public Function LoadConfig() As Boolean
     On Error GoTo ErrorHandler
     
-    ' 多层次网络检查，Mac系统兼容
-    Dim httpRequest As Object
-
-    ' 方法1: 尝试使用MSXML2.XMLHTTP
-    Set httpRequest = CreateObject("MSXML2.XMLHTTP")
-
-    With httpRequest
-        ' 使用HTTP而不是HTTPS，提高Mac兼容性
-        .Open "GET", "http://www.apple.com", False
-        .setRequestHeader "User-Agent", "Excel VBA ETF Tracker"
-
-        ' 设置较短的超时时间
-        On Error Resume Next
-        .setTimeouts 5000, 5000, 10000, 10000
-        On Error GoTo ErrorHandler
-
-        .send
-
-        ' 检查响应状态
-        If .Status = 200 Or .Status = 301 Or .Status = 302 Then
-            CheckInternetConnection = True
-            Exit Function
+    Dim configPath As String
+    configPath = GetConfigFilePath()
+    
+    If Len(configPath) = 0 Or Dir(configPath) = "" Then
+        ' 创建默认配置
+        Set configData = GetDefaultConfig()
+        LoadConfig = SaveConfig()
+    Else
+        ' 读取现有配置
+        Dim fileContent As String
+        fileContent = ReadTextFile(configPath)
+        
+        If Len(fileContent) > 0 Then
+            Set configData = JsonConverter.ParseJSON(fileContent)
+            LoadConfig = True
+        Else
+            Set configData = GetDefaultConfig()
+            LoadConfig = SaveConfig()
         End If
-    End With
-
-    ' 方法2: 如果第一种方法失败，尝试其他方法
-    Set httpRequest = Nothing
-    Set httpRequest = CreateObject("WinHttp.WinHttpRequest.5.1")
-
-    With httpRequest
-        .Open "GET", "http://www.apple.com", False
-        .setRequestHeader "User-Agent", "Excel VBA ETF Tracker"
-        .setTimeouts 5000, 5000, 10000, 10000
-        .send
-
-        If .Status = 200 Or .Status = 301 Or .Status = 302 Then
-            CheckInternetConnection = True
-            Exit Function
-        End If
-    End With
-
-    ' 如果都失败，返回False
-    CheckInternetConnection = False
+    End If
+    
     Exit Function
-
+    
 ErrorHandler:
-    ' 如果创建对象或网络请求失败，尝试fallback方法
-    On Error Resume Next
-
-    ' 方法3: 简单的连接测试作为最后的fallback
-    ' 在某些Mac系统上，网络请求可能不可用，但实际网络是正常的
-    ' 这种情况下我们允许继续执行，让API调用自己处理网络错误
-    CheckInternetConnection = True
-
-    Debug.Print "网络检查遇到问题，将继续执行API调用 - " & Err.Description
+    Set configData = GetDefaultConfig()
+    LoadConfig = False
+    Debug.Print "加载配置错误: " & Err.Description
 End Function
 
-' ========== API频率限制控制 ==========
-Public Sub WaitForApiRateLimit()
-    Dim currentTime As Double
-    Dim timeSinceLastRequest As Double
+' 保存配置
+Public Function SaveConfig() As Boolean
+    On Error GoTo ErrorHandler
     
-    currentTime = Timer
-    timeSinceLastRequest = currentTime - LastRequestTime
-    
-    ' 如果距离上次请求时间不足延迟时间，则等待
-    If timeSinceLastRequest < API_RATE_LIMIT_DELAY Then
-        Application.Wait DateAdd("s", API_RATE_LIMIT_DELAY - timeSinceLastRequest, Now)
+    If configData Is Nothing Then
+        SaveConfig = False
+        Exit Function
     End If
     
-    LastRequestTime = Timer
-End Sub
-
-' ========== 工作表初始化 ==========
-Public Sub InitializeWorksheet()
-    Dim ws As Worksheet
-    Dim wsExists As Boolean
+    Dim configPath As String
+    configPath = GetConfigFilePath()
     
-    ' 检查工作表是否存在
-    wsExists = False
-    For Each ws In ActiveWorkbook.Worksheets
-        If ws.Name = WORKSHEET_NAME Then
-            wsExists = True
-            Set ws = ActiveWorkbook.Worksheets(WORKSHEET_NAME)
-            Exit For
+    If Len(configPath) = 0 Then
+        SaveConfig = False
+        Exit Function
+    End If
+    
+    ' 转换为JSON字符串
+    Dim jsonContent As String
+    jsonContent = JsonConverter.ConvertToJSON(configData)
+    
+    ' 写入文件
+    SaveConfig = WriteTextFile(configPath, jsonContent)
+    
+    Exit Function
+    
+ErrorHandler:
+    SaveConfig = False
+    Debug.Print "保存配置错误: " & Err.Description
+End Function
+
+' 获取配置值
+Public Function GetConfig(key As String, Optional defaultValue As Variant = "") As Variant
+    On Error GoTo ErrorHandler
+    
+    If configData Is Nothing Then
+        LoadConfig
+    End If
+    
+    If configData Is Nothing Then
+        GetConfig = defaultValue
+        Exit Function
+    End If
+    
+    ' 支持嵌套key，如 "api.token"
+    Dim keys As Variant
+    keys = Split(key, ".")
+    
+    Dim currentObj As Object
+    Set currentObj = configData
+    
+    Dim i As Integer
+    For i = 0 To UBound(keys)
+        If currentObj.Exists(keys(i)) Then
+            If i = UBound(keys) Then
+                GetConfig = currentObj(keys(i))
+            Else
+                Set currentObj = currentObj(keys(i))
+            End If
+        Else
+            GetConfig = defaultValue
+            Exit Function
         End If
-    Next ws
+    Next i
     
-    ' 如果工作表不存在，创建它
-    If Not wsExists Then
-        Set ws = ActiveWorkbook.Worksheets.Add
-        ws.Name = WORKSHEET_NAME
-    End If
+    Exit Function
     
-    ' 设置表头
-    With ws
-        .Cells(HEADER_ROW, ETF_CODE_COLUMN).Value = HEADER_ETF_CODE
-        .Cells(HEADER_ROW, PRICE_COLUMN).Value = HEADER_PRICE
-        .Cells(HEADER_ROW, DATE_COLUMN).Value = HEADER_DATE
-        
-        ' 格式化表头
-        .Range(.Cells(HEADER_ROW, ETF_CODE_COLUMN), .Cells(HEADER_ROW, DATE_COLUMN)).Font.Bold = True
-        .Range(.Cells(HEADER_ROW, ETF_CODE_COLUMN), .Cells(HEADER_ROW, DATE_COLUMN)).Interior.Color = RGB(200, 200, 200)
-        
-        ' 设置列宽
-        .Columns(ETF_CODE_COLUMN).ColumnWidth = 12
-        .Columns(PRICE_COLUMN).ColumnWidth = 15
-        .Columns(DATE_COLUMN).ColumnWidth = 15
-        
-        ' 冻结首行
-        .Range("A2").Select
-        ActiveWindow.FreezePanes = True
-    End With
-    
-    ' 激活工作表
-    ws.Activate
-End Sub
-
-' ========== 获取当前日期字符串 ==========
-Public Function GetCurrentDateString() As String
-    ' Mac兼容的日期格式化方法
-    GetCurrentDateString = Year(Date) & "-" & Right("0" & Month(Date), 2) & "-" & Right("0" & Day(Date), 2)
+ErrorHandler:
+    GetConfig = defaultValue
+    Debug.Print "获取配置错误: " & Err.Description
 End Function
 
-' ========== 获取5天前日期字符串（用于API默认查询范围）==========
-Public Function GetFiveDaysAgoString() As String
-    ' Mac兼容的日期格式化方法
-    Dim fiveDaysAgo As Date
-    fiveDaysAgo = DateAdd("d", -5, Date)
-    GetFiveDaysAgoString = Year(fiveDaysAgo) & "-" & Right("0" & Month(fiveDaysAgo), 2) & "-" & Right("0" & Day(fiveDaysAgo), 2)
+' 设置配置值
+Public Function SetConfig(key As String, value As Variant) As Boolean
+    On Error GoTo ErrorHandler
+    
+    If configData Is Nothing Then
+        LoadConfig
+    End If
+    
+    If configData Is Nothing Then
+        SetConfig = False
+        Exit Function
+    End If
+    
+    ' 支持嵌套key设置
+    Dim keys As Variant
+    keys = Split(key, ".")
+    
+    Dim currentObj As Object
+    Set currentObj = configData
+    
+    Dim i As Integer
+    For i = 0 To UBound(keys) - 1
+        If Not currentObj.Exists(keys(i)) Then
+            Set currentObj(keys(i)) = CreateObject("Scripting.Dictionary")
+        End If
+        Set currentObj = currentObj(keys(i))
+    Next i
+    
+    currentObj(keys(UBound(keys))) = value
+    
+    SetConfig = SaveConfig()
+    
+    Exit Function
+    
+ErrorHandler:
+    SetConfig = False
+    Debug.Print "设置配置错误: " & Err.Description
+End Function
+
+' 验证配置
+Public Function ValidateConfig() As Boolean
+    On Error GoTo ErrorHandler
+    
+    If configData Is Nothing Then
+        LoadConfig
+    End If
+    
+    If configData Is Nothing Then
+        ValidateConfig = False
+        Exit Function
+    End If
+    
+    ' 检查必要配置项
+    Dim apiToken As String
+    apiToken = GetConfig("api.token")
+    
+    If Len(Trim(apiToken)) = 0 Or apiToken = "YOUR_API_TOKEN_HERE" Then
+        ValidateConfig = False
+        Exit Function
+    End If
+    
+    ' 检查其他必要配置
+    Dim baseUrl As String
+    baseUrl = GetConfig("api.base_url")
+    
+    If Len(Trim(baseUrl)) = 0 Then
+        ValidateConfig = False
+        Exit Function
+    End If
+    
+    ValidateConfig = True
+    Exit Function
+    
+ErrorHandler:
+    ValidateConfig = False
+    Debug.Print "配置验证错误: " & Err.Description
+End Function
+
+' 重置为默认配置
+Public Sub ResetToDefault()
+    On Error GoTo ErrorHandler
+    
+    Set configData = GetDefaultConfig()
+    SaveConfig
+    
+    Exit Sub
+    
+ErrorHandler:
+    Debug.Print "重置配置错误: " & Err.Description
+End Sub
+
+' 获取默认配置
+Private Function GetDefaultConfig() As Object
+    On Error GoTo ErrorHandler
+    
+    Dim config As Object
+    Set config = CreateObject("Scripting.Dictionary")
+    
+    ' API配置
+    Dim apiConfig As Object
+    Set apiConfig = CreateObject("Scripting.Dictionary")
+    apiConfig("base_url") = "https://open.lixinger.com"
+    apiConfig("token") = "YOUR_API_TOKEN_HERE"
+    apiConfig("timeout") = 30
+    apiConfig("max_retries") = 3
+    apiConfig("rate_limit") = 0.5
+    
+    ' 应用配置
+    Dim appConfig As Object
+    Set appConfig = CreateObject("Scripting.Dictionary")
+    appConfig("log_level") = "INFO"
+    appConfig("cache_enabled") = True
+    appConfig("batch_size") = 20
+    appConfig("executable_path") = ""
+    
+    config("api") = apiConfig
+    config("app") = appConfig
+    
+    Set GetDefaultConfig = config
+    Exit Function
+    
+ErrorHandler:
+    Set GetDefaultConfig = Nothing
+    Debug.Print "获取默认配置错误: " & Err.Description
+End Function
+
+' 获取配置文件路径
+Private Function GetConfigFilePath() As String
+    On Error GoTo ErrorHandler
+    
+    ' 优先使用工作簿同目录
+    Dim configPath As String
+    configPath = ThisWorkbook.Path & "/config/" & CONFIG_FILE_NAME
+    
+    ' 如果不存在，尝试其他位置
+    If Dir(configPath) = "" Then
+        configPath = ThisWorkbook.Path & "/" & CONFIG_FILE_NAME
+    End If
+    
+    GetConfigFilePath = configPath
+    Exit Function
+    
+ErrorHandler:
+    GetConfigFilePath = ""
+    Debug.Print "获取配置文件路径错误: " & Err.Description
+End Function
+
+' 读取文本文件
+Private Function ReadTextFile(filePath As String) As String
+    On Error GoTo ErrorHandler
+    
+    Dim fileNum As Integer
+    fileNum = FreeFile
+    
+    Open filePath For Input As #fileNum
+    ReadTextFile = Input$(LOF(fileNum), fileNum)
+    Close #fileNum
+    
+    Exit Function
+    
+ErrorHandler:
+    If fileNum > 0 Then Close #fileNum
+    ReadTextFile = ""
+    Debug.Print "读取文件错误: " & Err.Description
+End Function
+
+' 写入文本文件
+Private Function WriteTextFile(filePath As String, content As String) As Boolean
+    On Error GoTo ErrorHandler
+    
+    Dim fileNum As Integer
+    fileNum = FreeFile
+    
+    Open filePath For Output As #fileNum
+    Print #fileNum, content
+    Close #fileNum
+    
+    WriteTextFile = True
+    Exit Function
+    
+ErrorHandler:
+    If fileNum > 0 Then Close #fileNum
+    WriteTextFile = False
+    Debug.Print "写入文件错误: " & Err.Description
+End Function
+
+' 显示配置对话框
+Public Sub ShowConfigDialog()
+    On Error GoTo ErrorHandler
+    
+    Dim apiToken As String
+    apiToken = GetConfig("api.token")
+    
+    ' 如果是默认token，显示为空
+    If apiToken = "YOUR_API_TOKEN_HERE" Then
+        apiToken = ""
+    End If
+    
+    Dim newToken As String
+    newToken = InputBox("请输入lixinger API Token:", "API配置", apiToken)
+    
+    If Len(Trim(newToken)) > 0 Then
+        SetConfig "api.token", newToken
+        MsgBox "API Token已保存", vbInformation, "配置更新"
+    End If
+    
+    Exit Sub
+    
+ErrorHandler:
+    MsgBox "配置对话框错误: " & Err.Description, vbExclamation, "配置错误"
+End Sub
+
+' 获取Excel相关配置
+Public Function GetExcelConfig(key As String, Optional defaultValue As Variant = "") As Variant
+    On Error Resume Next
+    
+    Select Case key
+        Case "etf_codes_column"
+            GetExcelConfig = "A"
+        Case "prices_column"
+            GetExcelConfig = "B"
+        Case "status_column"
+            GetExcelConfig = "C"
+        Case "update_time_column"
+            GetExcelConfig = "D"
+        Case "start_row"
+            GetExcelConfig = 2
+        Case Else
+            GetExcelConfig = defaultValue
+    End Select
 End Function

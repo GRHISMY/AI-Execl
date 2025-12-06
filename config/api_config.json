@@ -1,0 +1,15 @@
+{
+  "api": {
+    "base_url": "https://open.lixinger.com",
+    "token": "30cf80b9-ac68-4521-86c2-5847d7ce728e",
+    "timeout": 30,
+    "max_retries": 3,
+    "rate_limit": 0.5
+  },
+  "app": {
+    "log_level": "INFO",
+    "cache_enabled": true,
+    "batch_size": 20,
+    "executable_path": ""
+  }
+}

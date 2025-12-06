@@ -1,0 +1,3 @@
+# ETF价格获取工具依赖包
+requests>=2.25.0
+pyinstaller>=4.0

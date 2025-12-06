@@ -1,0 +1,18 @@
+{
+  "excel": {
+    "etf_codes_column": "A",
+    "prices_column": "B", 
+    "status_column": "C",
+    "update_time_column": "D",
+    "start_row": 2
+  },
+  "ui": {
+    "refresh_button_name": "RefreshButton",
+    "config_button_name": "ConfigButton",
+    "status_range": "E1"
+  },
+  "format": {
+    "price_decimals": 3,
+    "date_format": "yyyy-mm-dd hh:mm:ss"
+  }
+}
