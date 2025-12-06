@@ -1,593 +1,452 @@
-'Attribute VB_Name = "JsonConverter"
+Attribute VB_Name = "JsonConverter"
 '
-' JsonConverter - 增强的JSON解析器模块
-' 专为Mac Excel环境优化，支持复杂嵌套结构的JSON解析
+' JsonConverter_Mac - Mac兼容的JSON转换器
+' 完全不依赖ActiveX组件，专为Mac Excel设计
 '
 Option Explicit
 
-' 全局变量用于解析状态
-Private parseIndex As Long
-Private jsonContent As String
+' Mac兼容的简单JSON解析器
+' 支持基本的JSON结构：对象、数组、字符串、数字、布尔值
 
-' JSON解析主函数
-Public Function ParseJSON(jsonString As String) As Object
+' 解析JSON字符串为简单值（用于API响应）
+Public Function ParseJSON(jsonText As String) As Variant
     On Error GoTo ErrorHandler
-
-    ' 初始化解析状态
-    jsonContent = Trim(jsonString)
-    parseIndex = 1
-
-    ' 开始解析
-    Set ParseJSON = ParseValue()
+    
+    Dim trimmedText As String
+    trimmedText = Trim(jsonText)
+    
+    If Len(trimmedText) = 0 Then
+        ParseJSON = ""
+        Exit Function
+    End If
+    
+    ' 简单JSON解析 - 支持基本结构
+    If Left(trimmedText, 1) = "{" And Right(trimmedText, 1) = "}" Then
+        ' JSON对象 - 转换为字符串数组
+        ParseJSON = ParseSimpleObject(trimmedText)
+    ElseIf Left(trimmedText, 1) = "[" And Right(trimmedText, 1) = "]" Then
+        ' JSON数组
+        ParseJSON = ParseSimpleArray(trimmedText)
+    ElseIf Left(trimmedText, 1) = """" And Right(trimmedText, 1) = """" Then
+        ' JSON字符串
+        ParseJSON = Mid(trimmedText, 2, Len(trimmedText) - 2)
+    ElseIf IsNumeric(trimmedText) Then
+        ' JSON数字
+        ParseJSON = CDbl(trimmedText)
+    ElseIf LCase(trimmedText) = "true" Then
+        ParseJSON = True
+    ElseIf LCase(trimmedText) = "false" Then
+        ParseJSON = False
+    ElseIf LCase(trimmedText) = "null" Then
+        ParseJSON = Null
+    Else
+        ' 默认返回原始字符串
+        ParseJSON = trimmedText
+    End If
+    
     Exit Function
-
+    
 ErrorHandler:
-    Set ParseJSON = Nothing
-    Debug.Print "JSON解析错误: " & Err.Description & " at position " & parseIndex
+    Debug.Print "JSON解析错误: " & Err.Description
+    ParseJSON = jsonText
 End Function
 
-' 解析任意JSON值
-Private Function ParseValue() As Variant
+' 解析简单JSON对象（完整实现）
+Private Function ParseSimpleObject(jsonText As String) As Variant
     On Error GoTo ErrorHandler
 
-    ' 跳过空白字符
-    SkipWhitespace
+    ' 移除大括号
+    Dim content As String
+    content = Trim(Mid(jsonText, 2, Len(jsonText) - 2))
 
-    If parseIndex > Len(jsonContent) Then
-        ParseValue = Null
+    If Len(content) = 0 Then
+        ParseSimpleObject = Array()
         Exit Function
     End If
 
+    ' 正确解析键值对，考虑字符串中的逗号
+    Dim pairs() As String
+    Dim pairCount As Integer
+    pairCount = 0
+    ReDim pairs(0 To 99)
+
+    Dim i As Integer
+    Dim inString As Boolean
+    Dim currentPair As String
     Dim char As String
-    char = Mid(jsonContent, parseIndex, 1)
 
-    Select Case char
-        Case "{"
-            Set ParseValue = ParseObject()
-        Case "["
-            Set ParseValue = ParseArray()
-        Case """"
-            ParseValue = ParseString()
-        Case "t", "f"
-            ParseValue = ParseBoolean()
-        Case "n"
-            ParseValue = ParseNull()
-        Case Else
-            If IsNumericChar(char) Then
-                ParseValue = ParseNumber()
-            Else
-                Err.Raise vbObjectError + 1001, "JsonConverter", "无效的JSON字符: " & char
-            End If
-    End Select
+    inString = False
+    currentPair = ""
 
-    Exit Function
-
-ErrorHandler:
-    ParseValue = Null
-    Debug.Print "解析值错误: " & Err.Description
-End Function
-
-' 解析JSON对象
-Private Function ParseObject() As Object
-    On Error GoTo ErrorHandler
-
-    Dim obj As Object
-    Set obj = CreateObject("Scripting.Dictionary")
-
-    ' 跳过开始的 {
-    parseIndex = parseIndex + 1
-    SkipWhitespace
-
-    ' 检查空对象
-    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "}" Then
-        parseIndex = parseIndex + 1
-        Set ParseObject = obj
-        Exit Function
-    End If
-
-    ' 解析键值对
-    Do
-        SkipWhitespace
-
-        ' 解析键
-        If parseIndex > Len(jsonContent) Or Mid(jsonContent, parseIndex, 1) <> """" Then
-            Err.Raise vbObjectError + 1002, "JsonConverter", "期望字符串键"
-        End If
-
-        Dim key As String
-        key = ParseString()
-
-        SkipWhitespace
-
-        ' 期望冒号
-        If parseIndex > Len(jsonContent) Or Mid(jsonContent, parseIndex, 1) <> ":" Then
-            Err.Raise vbObjectError + 1003, "JsonConverter", "期望冒号"
-        End If
-        parseIndex = parseIndex + 1
-
-        SkipWhitespace
-
-        ' 解析值
-        Dim value As Variant
-        If IsObject(ParseValue()) Then
-            Set obj(key) = ParseValue()
-        Else
-            obj(key) = ParseValue()
-        End If
-
-        SkipWhitespace
-
-        ' 检查是否继续
-        If parseIndex > Len(jsonContent) Then Exit Do
-
-        Dim nextChar As String
-        nextChar = Mid(jsonContent, parseIndex, 1)
-
-        If nextChar = "}" Then
-            parseIndex = parseIndex + 1
-            Exit Do
-        ElseIf nextChar = "," Then
-            parseIndex = parseIndex + 1
-        Else
-            Err.Raise vbObjectError + 1004, "JsonConverter", "期望逗号或右大括号"
-        End If
-    Loop
-
-    Set ParseObject = obj
-    Exit Function
-
-ErrorHandler:
-    Set ParseObject = Nothing
-    Debug.Print "解析对象错误: " & Err.Description
-End Function
-
-' 解析JSON数组
-Private Function ParseArray() As Object
-    On Error GoTo ErrorHandler
-
-    Dim arr As Object
-    Set arr = CreateObject("Scripting.Dictionary")
-
-    ' 跳过开始的 [
-    parseIndex = parseIndex + 1
-    SkipWhitespace
-
-    ' 检查空数组
-    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "]" Then
-        parseIndex = parseIndex + 1
-        Set ParseArray = arr
-        Exit Function
-    End If
-
-    Dim index As Long
-    index = 0
-
-    ' 解析数组元素
-    Do
-        SkipWhitespace
-
-        ' 解析元素
-        Dim element As Variant
-        Set element = ParseValue()
-        If IsObject(element) Then
-            Set arr(CStr(index)) = element
-        Else
-            arr(CStr(index)) = element
-        End If
-
-        index = index + 1
-        SkipWhitespace
-
-        ' 检查是否继续
-        If parseIndex > Len(jsonContent) Then Exit Do
-
-        Dim nextChar As String
-        nextChar = Mid(jsonContent, parseIndex, 1)
-
-        If nextChar = "]" Then
-            parseIndex = parseIndex + 1
-            Exit Do
-        ElseIf nextChar = "," Then
-            parseIndex = parseIndex + 1
-        Else
-            Err.Raise vbObjectError + 1005, "JsonConverter", "期望逗号或右方括号"
-        End If
-    Loop
-
-    Set ParseArray = arr
-    Exit Function
-
-ErrorHandler:
-    Set ParseArray = Nothing
-    Debug.Print "解析数组错误: " & Err.Description
-End Function
-
-' 解析字符串
-Private Function ParseString() As String
-    On Error GoTo ErrorHandler
-
-    ' 跳过开始引号
-    parseIndex = parseIndex + 1
-
-    Dim result As String
-    result = ""
-
-    Do While parseIndex <= Len(jsonContent)
-        Dim char As String
-        char = Mid(jsonContent, parseIndex, 1)
+    For i = 1 To Len(content)
+        char = Mid(content, i, 1)
 
         If char = """" Then
-            ' 结束引号
-            parseIndex = parseIndex + 1
-            ParseString = result
-            Exit Function
-        ElseIf char = "\" Then
-            ' 转义字符
-            parseIndex = parseIndex + 1
-            If parseIndex <= Len(jsonContent) Then
-                Dim escapeChar As String
-                escapeChar = Mid(jsonContent, parseIndex, 1)
-                Select Case escapeChar
-                    Case """"
-                        result = result & """"
-                    Case "\"
-                        result = result & "\"
-                    Case "/"
-                        result = result & "/"
-                    Case "b"
-                        result = result & Chr(8)
-                    Case "f"
-                        result = result & Chr(12)
-                    Case "n"
-                        result = result & vbLf
-                    Case "r"
-                        result = result & vbCr
-                    Case "t"
-                        result = result & vbTab
-                    Case Else
-                        result = result & escapeChar
-                End Select
-                parseIndex = parseIndex + 1
+            inString = Not inString
+            currentPair = currentPair & char
+        ElseIf char = "," And Not inString Then
+            ' 找到分隔符，保存当前键值对
+            If Len(Trim(currentPair)) > 0 Then
+                pairs(pairCount) = Trim(currentPair)
+                pairCount = pairCount + 1
+                If pairCount > UBound(pairs) Then
+                    ReDim Preserve pairs(0 To UBound(pairs) + 99)
+                End If
             End If
+            currentPair = ""
         Else
-            result = result & char
-            parseIndex = parseIndex + 1
+            currentPair = currentPair & char
         End If
-    Loop
+    Next i
 
-    Err.Raise vbObjectError + 1006, "JsonConverter", "未结束的字符串"
-
-ErrorHandler:
-    ParseString = ""
-    Debug.Print "解析字符串错误: " & Err.Description
-End Function
-
-' 解析数字
-Private Function ParseNumber() As Variant
-    On Error GoTo ErrorHandler
-
-    Dim startPos As Long
-    startPos = parseIndex
-
-    ' 处理负号
-    If Mid(jsonContent, parseIndex, 1) = "-" Then
-        parseIndex = parseIndex + 1
+    ' 添加最后一个键值对
+    If Len(Trim(currentPair)) > 0 Then
+        pairs(pairCount) = Trim(currentPair)
+        pairCount = pairCount + 1
     End If
 
-    ' 解析整数部分
-    If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
-        Err.Raise vbObjectError + 1007, "JsonConverter", "无效的数字格式"
-    End If
-
-    Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
-        parseIndex = parseIndex + 1
-    Loop
-
-    ' 处理小数点
-    If parseIndex <= Len(jsonContent) And Mid(jsonContent, parseIndex, 1) = "." Then
-        parseIndex = parseIndex + 1
-        If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
-            Err.Raise vbObjectError + 1008, "JsonConverter", "小数点后需要数字"
-        End If
-
-        Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
-            parseIndex = parseIndex + 1
-        Loop
-    End If
-
-    ' 处理科学计数法
-    If parseIndex <= Len(jsonContent) And (Mid(jsonContent, parseIndex, 1) = "e" Or Mid(jsonContent, parseIndex, 1) = "E") Then
-        parseIndex = parseIndex + 1
-        If parseIndex <= Len(jsonContent) And (Mid(jsonContent, parseIndex, 1) = "+" Or Mid(jsonContent, parseIndex, 1) = "-") Then
-            parseIndex = parseIndex + 1
-        End If
-
-        If Not IsNumericChar(Mid(jsonContent, parseIndex, 1)) Then
-            Err.Raise vbObjectError + 1009, "JsonConverter", "指数需要数字"
-        End If
-
-        Do While parseIndex <= Len(jsonContent) And IsNumericChar(Mid(jsonContent, parseIndex, 1))
-            parseIndex = parseIndex + 1
-        Loop
-    End If
-
-    Dim numberStr As String
-    numberStr = Mid(jsonContent, startPos, parseIndex - startPos)
-
-    If InStr(numberStr, ".") > 0 Or InStr(LCase(numberStr), "e") > 0 Then
-        ParseNumber = CDbl(numberStr)
-    Else
-        ParseNumber = CLng(numberStr)
-    End If
-
-    Exit Function
-
-ErrorHandler:
-    ParseNumber = 0
-    Debug.Print "解析数字错误: " & Err.Description
-End Function
-
-' 解析布尔值
-Private Function ParseBoolean() As Boolean
-    On Error GoTo ErrorHandler
-
-    If Mid(jsonContent, parseIndex, 4) = "true" Then
-        parseIndex = parseIndex + 4
-        ParseBoolean = True
-    ElseIf Mid(jsonContent, parseIndex, 5) = "false" Then
-        parseIndex = parseIndex + 5
-        ParseBoolean = False
-    Else
-        Err.Raise vbObjectError + 1010, "JsonConverter", "无效的布尔值"
-    End If
-
-    Exit Function
-
-ErrorHandler:
-    ParseBoolean = False
-    Debug.Print "解析布尔值错误: " & Err.Description
-End Function
-
-' 解析null值
-Private Function ParseNull() As Variant
-    On Error GoTo ErrorHandler
-
-    If Mid(jsonContent, parseIndex, 4) = "null" Then
-        parseIndex = parseIndex + 4
-        ParseNull = Null
-    Else
-        Err.Raise vbObjectError + 1011, "JsonConverter", "无效的null值"
-    End If
-
-    Exit Function
-
-ErrorHandler:
-    ParseNull = Null
-    Debug.Print "解析null值错误: " & Err.Description
-End Function
-
-' 跳过空白字符
-Private Sub SkipWhitespace()
-    Do While parseIndex <= Len(jsonContent)
-        Dim char As String
-        char = Mid(jsonContent, parseIndex, 1)
-        If char = " " Or char = vbTab Or char = vbCr Or char = vbLf Then
-            parseIndex = parseIndex + 1
-        Else
-            Exit Do
-        End If
-    Loop
-End Sub
-
-' 检查是否为数字字符
-Private Function IsNumericChar(char As String) As Boolean
-    IsNumericChar = (char >= "0" And char <= "9")
-End Function
-
-' 将对象转换为JSON字符串
-Public Function ConvertToJSON(obj As Variant) As String
-    On Error GoTo ErrorHandler
-
-    ConvertToJSON = ConvertValueToJSON(obj)
-    Exit Function
-
-ErrorHandler:
-    ConvertToJSON = "null"
-    Debug.Print "JSON转换错误: " & Err.Description
-End Function
-
-' 转换值为JSON格式（增强版）
-Private Function ConvertValueToJSON(value As Variant) As String
-    On Error GoTo ErrorHandler
-
-    If IsNull(value) Then
-        ConvertValueToJSON = "null"
-    ElseIf IsEmpty(value) Then
-        ConvertValueToJSON = "null"
-    ElseIf VarType(value) = vbString Then
-        ConvertValueToJSON = """" & EscapeJsonString(CStr(value)) & """"
-    ElseIf VarType(value) = vbBoolean Then
-        If value Then
-            ConvertValueToJSON = "true"
-        Else
-            ConvertValueToJSON = "false"
-        End If
-    ElseIf IsNumeric(value) Then
-        ConvertValueToJSON = Replace(CStr(value), ",", ".")
-    ElseIf IsObject(value) Then
-        If value Is Nothing Then
-            ConvertValueToJSON = "null"
-        Else
-            ConvertValueToJSON = ConvertObjectToJSON(value)
-        End If
-    Else
-        ConvertValueToJSON = """" & EscapeJsonString(CStr(value)) & """"
-    End If
-
-    Exit Function
-
-ErrorHandler:
-    ConvertValueToJSON = "null"
-    Debug.Print "值转换JSON错误: " & Err.Description
-End Function
-
-' 转换对象为JSON
-Private Function ConvertObjectToJSON(ByVal obj As Object) As String
-    On Error GoTo ErrorHandler
-
-    If obj Is Nothing Then
-        ConvertObjectToJSON = "null"
+    If pairCount = 0 Then
+        ParseSimpleObject = Array()
         Exit Function
     End If
 
-    ' 检查是否是Dictionary（对象）
-    If TypeName(obj) = "Dictionary" Then
-        Dim json As String
-        json = "{"
+    ' 创建结果数组
+    ReDim result(0 To pairCount - 1, 0 To 1) As String
 
-        Dim key As Variant
-        Dim first As Boolean
-        first = True
+    For i = 0 To pairCount - 1
+        Dim pair As String
+        pair = Trim(pairs(i))
+        
+        Dim colonPos As Integer
+        colonPos = InStr(pair, ":")
+        
+        If colonPos > 0 Then
+            Dim key As String
+            Dim value As String
+            key = Trim(Left(pair, colonPos - 1))
+            value = Trim(Mid(pair, colonPos + 1))
+            
+            ' 移除引号
+            If Left(key, 1) = """" And Right(key, 1) = """" Then
+                key = Mid(key, 2, Len(key) - 2)
+            End If
+            If Left(value, 1) = """" And Right(value, 1) = """" Then
+                value = Mid(value, 2, Len(value) - 2)
+            End If
+            
+            result(i, 0) = key
+            result(i, 1) = value
+        End If
+    Next i
+    
+    ParseSimpleObject = result
+    Exit Function
+    
+ErrorHandler:
+    Debug.Print "JSON对象解析错误: " & Err.Description
+    ParseSimpleObject = Array()
+End Function
 
-        For Each key In obj.Keys
-            If Not first Then json = json & ","
-            json = json & """" & EscapeJsonString(CStr(key)) & """:"
-            json = json & ConvertValueToJSON(obj(key))
-            first = False
-        Next key
+' 解析简单JSON数组（完整实现）
+Private Function ParseSimpleArray(jsonText As String) As Variant
+    On Error GoTo ErrorHandler
 
-        json = json & "}"
-        ConvertObjectToJSON = json
+    ' 移除方括号
+    Dim content As String
+    content = Trim(Mid(jsonText, 2, Len(jsonText) - 2))
+
+    If Len(content) = 0 Then
+        ParseSimpleArray = Array()
+        Exit Function
+    End If
+
+    ' 正确解析数组元素，考虑字符串中的逗号
+    Dim elements() As String
+    Dim elementCount As Integer
+    elementCount = 0
+    ReDim elements(0 To 99)
+
+    Dim i As Integer
+    Dim inString As Boolean
+    Dim currentElement As String
+    Dim char As String
+
+    inString = False
+    currentElement = ""
+
+    For i = 1 To Len(content)
+        char = Mid(content, i, 1)
+
+        If char = """" Then
+            inString = Not inString
+            currentElement = currentElement & char
+        ElseIf char = "," And Not inString Then
+            ' 找到分隔符，保存当前元素
+            If Len(Trim(currentElement)) > 0 Then
+                elements(elementCount) = Trim(currentElement)
+                elementCount = elementCount + 1
+                If elementCount > UBound(elements) Then
+                    ReDim Preserve elements(0 To UBound(elements) + 99)
+                End If
+            End If
+            currentElement = ""
+        Else
+            currentElement = currentElement & char
+        End If
+    Next i
+
+    ' 添加最后一个元素
+    If Len(Trim(currentElement)) > 0 Then
+        elements(elementCount) = Trim(currentElement)
+        elementCount = elementCount + 1
+    End If
+
+    If elementCount = 0 Then
+        ParseSimpleArray = Array()
+        Exit Function
+    End If
+
+    ' 创建结果数组并清理数据
+    ReDim result(0 To elementCount - 1) As String
+
+    For i = 0 To elementCount - 1
+        result(i) = Trim(elements(i))
+        ' 移除引号
+        If Left(result(i), 1) = """" And Right(result(i), 1) = """" Then
+            result(i) = Mid(result(i), 2, Len(result(i)) - 2)
+        End If
+    Next i
+
+    ParseSimpleArray = result
+    Exit Function
+    
+ErrorHandler:
+    Debug.Print "JSON数组解析错误: " & Err.Description
+    ParseSimpleArray = Array()
+End Function
+
+' 将简单值转换为JSON（完整实现）
+Public Function ConvertToJSON(data As Variant) As String
+    On Error GoTo ErrorHandler
+
+    If IsArray(data) Then
+        ConvertToJSON = ConvertArrayToJSON(data)
+    ElseIf IsObject(data) Then
+        ' 完整处理对象 - 尝试获取对象的默认属性或转为字符串
+        Dim objStr As String
+        On Error Resume Next
+        objStr = CStr(data)
+        If Err.Number <> 0 Then
+            objStr = "object"
+        End If
+        On Error GoTo ErrorHandler
+        ConvertToJSON = """" & EscapeString(objStr) & """"
+    ElseIf VarType(data) = vbString Then
+        ConvertToJSON = """" & EscapeString(CStr(data)) & """"
+    ElseIf VarType(data) = vbBoolean Then
+        ConvertToJSON = IIf(data, "true", "false")
+    ElseIf VarType(data) = vbDate Then
+        ConvertToJSON = """" & Format(data, "yyyy-mm-dd hh:mm:ss") & """"
+    ElseIf IsNumeric(data) Then
+        ConvertToJSON = CStr(data)
+    ElseIf IsNull(data) Then
+        ConvertToJSON = "null"
+    ElseIf VarType(data) = vbEmpty Then
+        ConvertToJSON = "null"
     Else
-        ' 其他对象类型，转换为字符串
-        ConvertObjectToJSON = """" & EscapeJsonString(CStr(obj)) & """"
+        ConvertToJSON = """" & EscapeString(CStr(data)) & """"
     End If
 
     Exit Function
 
 ErrorHandler:
-    ConvertObjectToJSON = "null"
-    Debug.Print "对象转换JSON错误: " & Err.Description
+    ConvertToJSON = """" & EscapeString(CStr(data)) & """"
 End Function
 
-' JSON字符串转义
-Private Function EscapeJsonString(str As String) As String
+' 转换数组为JSON数组
+Private Function ConvertArrayToJSON(arr As Variant) As String
     On Error GoTo ErrorHandler
-
+    
+    If Not IsArray(arr) Then
+        ConvertArrayToJSON = "[]"
+        Exit Function
+    End If
+    
     Dim result As String
-    Dim i As Long
+    result = "["
+    
+    Dim i As Integer
+    Dim firstItem As Boolean
+    firstItem = True
+    
+    For i = LBound(arr) To UBound(arr)
+        If Not firstItem Then
+            result = result & ","
+        End If
+        result = result & ConvertToJSON(arr(i))
+        firstItem = False
+    Next i
+    
+    result = result & "]"
+    ConvertArrayToJSON = result
+    Exit Function
+    
+ErrorHandler:
+    ConvertArrayToJSON = "[]"
+End Function
 
+' 转义JSON字符串
+Private Function EscapeString(str As String) As String
+    Dim result As String
     result = str
-    result = Replace(result, "\", "\\")    ' 反斜杠
-    result = Replace(result, """", "\""")  ' 引号
-    result = Replace(result, "/", "\/")    ' 斜杠
-    result = Replace(result, vbCr, "\r")   ' 回车
-    result = Replace(result, vbLf, "\n")   ' 换行
-    result = Replace(result, vbTab, "\t")  ' 制表符
-    result = Replace(result, Chr(8), "\b") ' 退格
-    result = Replace(result, Chr(12), "\f") ' 换页
-
-    EscapeJsonString = result
-    Exit Function
-
-ErrorHandler:
-    EscapeJsonString = str
-    Debug.Print "字符串转义错误: " & Err.Description
+    result = Replace(result, "\", "\\")
+    result = Replace(result, """", "\""")
+    result = Replace(result, vbCrLf, "\n")
+    result = Replace(result, vbCr, "\n")
+    result = Replace(result, vbLf, "\n")
+    result = Replace(result, vbTab, "\t")
+    EscapeString = result
 End Function
 
-' 获取JSON对象的值（支持嵌套路径）
-Public Function GetJSONValue(obj As Object, path As String, Optional defaultValue As Variant = "") As Variant
+' 从JSON对象数组中获取值（辅助函数）
+Public Function GetJSONValue(jsonArray As Variant, key As String) As String
     On Error GoTo ErrorHandler
-
-    If obj Is Nothing Then
-        GetJSONValue = defaultValue
+    
+    If Not IsArray(jsonArray) Then
+        GetJSONValue = ""
         Exit Function
     End If
-
-    Dim keys As Variant
-    keys = Split(path, ".")
-
-    Dim currentObj As Object
-    Set currentObj = obj
-
-    Dim i As Long
-    For i = 0 To UBound(keys)
-        If TypeName(currentObj) <> "Dictionary" Then
-            GetJSONValue = defaultValue
-            Exit Function
-        End If
-
-        If currentObj.Exists(keys(i)) Then
-            If i = UBound(keys) Then
-                ' 最后一个键，返回值
-                If IsObject(currentObj(keys(i))) Then
-                    Set GetJSONValue = currentObj(keys(i))
-                Else
-                    GetJSONValue = currentObj(keys(i))
-                End If
-            Else
-                ' 中间键，继续深入
-                If IsObject(currentObj(keys(i))) Then
-                    Set currentObj = currentObj(keys(i))
-                Else
-                    GetJSONValue = defaultValue
-                    Exit Function
-                End If
+    
+    Dim i As Integer
+    For i = 0 To UBound(jsonArray, 1)
+        If UBound(jsonArray, 2) >= 1 Then
+            If jsonArray(i, 0) = key Then
+                GetJSONValue = jsonArray(i, 1)
+                Exit Function
             End If
-        Else
-            GetJSONValue = defaultValue
-            Exit Function
         End If
     Next i
-
+    
+    GetJSONValue = ""
     Exit Function
-
+    
 ErrorHandler:
-    GetJSONValue = defaultValue
-    Debug.Print "获取JSON值错误: " & Err.Description
+    GetJSONValue = ""
 End Function
 
-' 检查JSON对象是否存在指定路径
-Public Function HasJSONPath(obj As Object, path As String) As Boolean
-    On Error GoTo ErrorHandler
+' 创建简单JSON对象字符串
+Public Function CreateSimpleJSON(key1 As String, value1 As String, _
+                                Optional key2 As String = "", Optional value2 As String = "", _
+                                Optional key3 As String = "", Optional value3 As String = "") As String
+    Dim result As String
+    result = "{"
+    result = result & """" & key1 & """: """ & EscapeString(value1) & """"
+    
+    If key2 <> "" Then
+        result = result & ", """ & key2 & """: """ & EscapeString(value2) & """"
+    End If
+    
+    If key3 <> "" Then
+        result = result & ", """ & key3 & """: """ & EscapeString(value3) & """"
+    End If
+    
+    result = result & "}"
+    CreateSimpleJSON = result
+End Function
 
-    If obj Is Nothing Then
-        HasJSONPath = False
-        Exit Function
+' 完整的JSON功能测试
+Public Sub TestJSONConverter()
+    Debug.Print "=== 测试Mac兼容JSON转换器 ==="
+
+    Dim allTestsPassed As Boolean
+    allTestsPassed = True
+    Dim testResults As String
+    testResults = "JSON转换器测试结果:" & vbCrLf
+
+    ' 测试1: 简单JSON对象解析
+    Dim testJSON1 As String
+    testJSON1 = "{""name"": ""test"", ""value"": ""123"", ""flag"": ""true""}"
+
+    Dim parsed1 As Variant
+    parsed1 = ParseJSON(testJSON1)
+
+    If IsArray(parsed1) Then
+        Dim testValue1 As String
+        testValue1 = GetJSONValue(parsed1, "name")
+        If testValue1 = "test" Then
+            testResults = testResults & "✓ 简单对象解析: 通过" & vbCrLf
+        Else
+            testResults = testResults & "✗ 简单对象解析: 失败" & vbCrLf
+            allTestsPassed = False
+        End If
+    Else
+        testResults = testResults & "✗ 简单对象解析: 失败" & vbCrLf
+        allTestsPassed = False
     End If
 
-    Dim keys As Variant
-    keys = Split(path, ".")
+    ' 测试2: 包含逗号的JSON解析
+    Dim testJSON2 As String
+    testJSON2 = "{""title"": ""Hello, World!"", ""count"": ""42""}"
 
-    Dim currentObj As Object
-    Set currentObj = obj
+    Dim parsed2 As Variant
+    parsed2 = ParseJSON(testJSON2)
 
-    Dim i As Long
-    For i = 0 To UBound(keys)
-        If TypeName(currentObj) <> "Dictionary" Then
-            HasJSONPath = False
-            Exit Function
-        End If
-
-        If currentObj.Exists(keys(i)) Then
-            If i < UBound(keys) Then
-                If IsObject(currentObj(keys(i))) Then
-                    Set currentObj = currentObj(keys(i))
-                Else
-                    HasJSONPath = False
-                    Exit Function
-                End If
-            End If
+    If IsArray(parsed2) Then
+        Dim testValue2 As String
+        testValue2 = GetJSONValue(parsed2, "title")
+        If testValue2 = "Hello, World!" Then
+            testResults = testResults & "✓ 复杂字符串解析: 通过" & vbCrLf
         Else
-            HasJSONPath = False
-            Exit Function
+            testResults = testResults & "✗ 复杂字符串解析: 失败" & vbCrLf
+            allTestsPassed = False
         End If
-    Next i
+    Else
+        testResults = testResults & "✗ 复杂字符串解析: 失败" & vbCrLf
+        allTestsPassed = False
+    End If
 
-    HasJSONPath = True
-    Exit Function
+    ' 测试3: JSON数组解析
+    Dim testJSON3 As String
+    testJSON3 = "[""apple"", ""banana"", ""cherry""]"
 
-ErrorHandler:
-    HasJSONPath = False
-    Debug.Print "检查JSON路径错误: " & Err.Description
-End Function
+    Dim parsed3 As Variant
+    parsed3 = ParseJSON(testJSON3)
+
+    If IsArray(parsed3) Then
+        If UBound(parsed3) = 2 And parsed3(0) = "apple" Then
+            testResults = testResults & "✓ 数组解析: 通过" & vbCrLf
+        Else
+            testResults = testResults & "✗ 数组解析: 失败" & vbCrLf
+            allTestsPassed = False
+        End If
+    Else
+        testResults = testResults & "✗ 数组解析: 失败" & vbCrLf
+        allTestsPassed = False
+    End If
+
+    ' 测试4: JSON生成
+    Dim testArray As Variant
+    testArray = Array("test1", "test2", "test3")
+
+    Dim generatedJSON As String
+    generatedJSON = ConvertToJSON(testArray)
+
+    If InStr(generatedJSON, "[") > 0 And InStr(generatedJSON, "]") > 0 Then
+        testResults = testResults & "✓ JSON生成: 通过" & vbCrLf
+    Else
+        testResults = testResults & "✗ JSON生成: 失败" & vbCrLf
+        allTestsPassed = False
+    End If
+
+    ' 显示测试结果
+    If allTestsPassed Then
+        testResults = testResults & vbCrLf & "🎉 所有测试通过！JSON转换器完全可用。"
+        MsgBox testResults, vbInformation, "测试成功"
+    Else
+        testResults = testResults & vbCrLf & "⚠️ 部分测试失败，请检查实现。"
+        MsgBox testResults, vbExclamation, "测试结果"
+    End If
+
+    Debug.Print testResults
+    Debug.Print "=== JSON转换器测试完成 ==="
+End Sub

@@ -65,8 +65,7 @@ Private Sub InitializeWorkbook()
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
     
-    ' 加载配置
-    Module_Config.LoadConfig
+    ' Mac兼容配置系统，不需要显式加载配置
     
     ' 初始化当前工作表
     Call EnsureWorksheetHeaders(ActiveSheet)
@@ -230,14 +229,14 @@ End Sub
 Private Function HasBeenInitialized() As Boolean
     On Error Resume Next
     
-    HasBeenInitialized = (Module_Config.GetConfig("app.initialized", False) = True)
+    HasBeenInitialized = (Module_Config.GetConfig("app.initialized") = "True")
 End Function
 
 ' 标记为已初始化
 Private Sub MarkAsInitialized()
     On Error Resume Next
     
-    Module_Config.SetConfig "app.initialized", True
+    Module_Config.SetConfig "app.initialized", "True"
 End Sub
 
 ' 右键菜单事件
